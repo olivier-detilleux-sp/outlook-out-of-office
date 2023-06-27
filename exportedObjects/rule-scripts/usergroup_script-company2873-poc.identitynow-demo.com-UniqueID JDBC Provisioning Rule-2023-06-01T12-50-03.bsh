@@ -1,0 +1,122 @@
+import java.sql.Connection;
+import java.sql.DriverManager;
+import java.sql.PreparedStatement;
+import java.sql.CallableStatement;
+import java.sql.SQLException;
+import java.sql.Types;
+import java.sql.ResultSet;
+import java.util.List;
+import sailpoint.api.SailPointContext;
+import sailpoint.connector.JDBCConnector;
+import sailpoint.object.Application;
+import sailpoint.object.ProvisioningPlan;
+import sailpoint.object.ProvisioningPlan.AccountRequest;
+import sailpoint.object.ProvisioningPlan.AttributeRequest;
+import sailpoint.object.ProvisioningPlan.PermissionRequest;
+import sailpoint.object.ProvisioningResult;
+import sailpoint.object.Schema;
+import sailpoint.object.ResourceObject;
+
+public String getAttributeRequestValue(AccountRequest acctReq, String attribute) {
+
+  if ( acctReq != null ) {
+    AttributeRequest attrReq = acctReq.getAttributeRequest(attribute);
+    if ( attrReq != null ) {
+      return attrReq.getValue();
+    }
+  }
+  return null;
+}
+
+ProvisioningResult result = new ProvisioningResult();
+PreparedStatement statement;
+CallableStatement callableStatement;
+
+if ( plan != null ) {
+
+  List accounts = plan.getAccountRequests();
+  if ( ( accounts != null ) && ( accounts.size() > 0 ) ) {
+    for ( AccountRequest account : accounts ) {
+      try {
+        if ( AccountRequest.Operation.Create.equals( account.getOperation() ) ) {
+          // Ideally we should first check to see if the account already exists.
+          // As written, this just assumes it does not.
+
+          
+          callableStatement = connection.prepareCall( "{CALL insertUniqueId('6', ?, ?, ?, ?)}" );
+          
+          callableStatement.setString ( 1, getAttributeRequestValue(account,"firstname") );
+          callableStatement.setString ( 2, getAttributeRequestValue(account,"lastname") );
+          callableStatement.setString ( 3, getAttributeRequestValue(account,"username") );
+          callableStatement.registerOutParameter(4, Types.INTEGER);
+          callableStatement.executeUpdate();
+
+          result.setStatus( ProvisioningResult.STATUS_COMMITTED );
+          ResourceObject obj = new ResourceObject(callableStatement.getInt(4).toString(), Schema.TYPE_ACCOUNT);
+          result.setObject(obj);
+
+        } else if ( AccountRequest.Operation.Modify.equals( account.getOperation() ) ) {
+          List attributeRequests = account.getAttributeRequests();
+          for ( AttributeRequest attRequest: attributeRequests ) {
+            String attributeName = attRequest.getName();
+            statement = connection.prepareStatement( "UPDATE uniqueId.idnid SET " + attributeName + " = ? where id = ?" );
+            statement.setString ( 1, getAttributeRequestValue(account, attributeName) );
+            statement.setString ( 2, account.getNativeIdentity() );
+            statement.executeUpdate();
+          }
+        
+/*
+          statement = connection.prepareStatement( "UPDATE uniqueId.idnid SET firstname = ?, lastname = ?, username = ? where id = ?" );
+          statement.setString ( 1, getAttributeRequestValue(account,"firstname") );
+          statement.setString ( 2, getAttributeRequestValue(account,"lastname") );
+          statement.setString ( 3, getAttributeRequestValue(account,"username") );
+          statement.setString ( 4, account.getNativeIdentity() );
+          statement.executeUpdate();
+*/
+          result.setStatus( ProvisioningResult.STATUS_COMMITTED );
+          
+        } else if ( AccountRequest.Operation.Delete.equals( account.getOperation() ) ) {
+
+          
+        } else if ( AccountRequest.Operation.Disable.equals( account.getOperation() ) ) {
+
+          statement = connection.prepareStatement( "UPDATE uniqueId.idnid SET status='disabled' WHERE id=?" );
+          statement.setString ( 1, account.getNativeIdentity() );
+          statement.executeUpdate();
+
+          result.setStatus( ProvisioningResult.STATUS_COMMITTED );
+
+        } else if ( AccountRequest.Operation.Enable.equals( account.getOperation() ) ) {
+
+          statement = connection.prepareStatement( "UPDATE uniqueId.idnid SET status='enabled' WHERE id=?" );
+          statement.setString ( 1, account.getNativeIdentity() );
+          statement.executeUpdate();
+
+          result.setStatus( ProvisioningResult.STATUS_COMMITTED );
+
+        } else if ( AccountRequest.Operation.Lock.equals( account.getOperation() ) ) {
+
+          // Lock, not supported.
+
+        } else if ( AccountRequest.Operation.Unlock.equals( account.getOperation() ) ) {
+
+          // Unlock, not supported.
+
+        } else {
+          // Unknown operation!
+        }
+      }
+      catch( SQLException e ) {
+        result.setStatus( ProvisioningResult.STATUS_FAILED );
+        result.addError( e );
+      }
+      finally {
+        if(statement != null) {
+          statement.close();
+        }
+      }
+    }
+  }
+}
+
+return result;
