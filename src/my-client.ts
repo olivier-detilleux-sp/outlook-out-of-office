@@ -37,35 +37,39 @@ export class MyClient {
 
     async getMailboxSettings(identity: string): Promise<Map<string, string>> {
         let result: Map<string, string> = new Map()
-        await this.client
-            .api('/users/' + identity + '/mailboxSettings/automaticRepliesSetting')
-            .top(1)
-            //.select(['status', 'scheduledStartDateTime', 'scheduledEndDateTime'])
-            .get()
-            .then((mailboxSettings) => {
-                result.set('automaticRepliesSetting', mailboxSettings.status)
-                result.set('scheduledEndDateTime', mailboxSettings.scheduledEndDateTime.dateTime)
-                result.set('scheduledStartDateTime', mailboxSettings.scheduledStartDateTime.dateTime)
+        try {
+            await this.client
+                .api('/users/' + identity + '/mailboxSettings/automaticRepliesSetting')
+                .top(1)
+                //.select(['status', 'scheduledStartDateTime', 'scheduledEndDateTime'])
+                .get()
+                .then((mailboxSettings) => {
+                    result.set('automaticRepliesSetting', mailboxSettings.status)
+                    result.set('scheduledEndDateTime', mailboxSettings.scheduledEndDateTime.dateTime)
+                    result.set('scheduledStartDateTime', mailboxSettings.scheduledStartDateTime.dateTime)
 
-                if (mailboxSettings.status == 'alwaysEnabled') {
-                    result.set('automaticRepliesStatus', 'enabled')
-                }
-
-                if (mailboxSettings.status == 'scheduled') {
-                    const start = new Date(mailboxSettings.scheduledStartDateTime.dateTime)
-                    const end = new Date(mailboxSettings.scheduledEndDateTime.dateTime)
-                    const now = new Date()
-                    if (start < now && end > now) {
+                    if (mailboxSettings.status == 'alwaysEnabled') {
                         result.set('automaticRepliesStatus', 'enabled')
-                    } else {
+                    }
+
+                    if (mailboxSettings.status == 'scheduled') {
+                        const start = new Date(mailboxSettings.scheduledStartDateTime.dateTime)
+                        const end = new Date(mailboxSettings.scheduledEndDateTime.dateTime)
+                        const now = new Date()
+                        if (start < now && end > now) {
+                            result.set('automaticRepliesStatus', 'enabled')
+                        } else {
+                            result.set('automaticRepliesStatus', 'disabled')
+                        }
+                    }
+
+                    if (mailboxSettings.status == 'disabled') {
                         result.set('automaticRepliesStatus', 'disabled')
                     }
-                }
-
-                if (mailboxSettings.status == 'disabled') {
-                    result.set('automaticRepliesStatus', 'disabled')
-                }
-            })
+                })
+        } catch (error) {
+            console.error('Error fetching mailbox settings:', error)
+        }
         return result
     }
 
@@ -74,7 +78,8 @@ export class MyClient {
 
         let response: PageCollection = await this.client
             .api('/users')
-            .top(10)
+            .header('ConsistencyLevel', 'eventual')
+            .top(100)
             .select([
                 'id',
                 'userPrincipalName',
